@@ -1,0 +1,4 @@
+{
+  "send-otp": "https://functions.poehali.dev/60881951-d949-4a5e-a695-9ba99f8b53c2",
+  "verify-otp": "https://functions.poehali.dev/74957357-8911-41df-a409-e53035411937"
+}

@@ -1,6 +1,9 @@
 import { useState } from "react";
 import Icon from "@/components/ui/icon";
 
+const SEND_OTP_URL = "https://functions.poehali.dev/60881951-d949-4a5e-a695-9ba99f8b53c2";
+const VERIFY_OTP_URL = "https://functions.poehali.dev/74957357-8911-41df-a409-e53035411937";
+
 interface AuthScreenProps {
   onAuth: (name: string, phone: string) => void;
 }
@@ -12,7 +15,8 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [name, setName] = useState("");
-  const [demoCode, setDemoCode] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const formatPhone = (val: string) => {
     const digits = val.replace(/\D/g, "");
@@ -26,6 +30,7 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
   const handlePhoneInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "");
     setPhone(raw.slice(0, 11));
+    setError("");
   };
 
   const handleOtpInput = (idx: number, val: string) => {
@@ -33,9 +38,9 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
     const next = [...otp];
     next[idx] = val;
     setOtp(next);
+    setError("");
     if (val && idx < 5) {
-      const el = document.getElementById(`otp-${idx + 1}`);
-      el?.focus();
+      document.getElementById(`otp-${idx + 1}`)?.focus();
     }
   };
 
@@ -45,17 +50,52 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
     }
   };
 
-  const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
-
-  const handleSendCode = () => {
-    if (phone.length >= 11) {
-      setDemoCode(generateCode());
+  const handleSendCode = async () => {
+    if (phone.length < 11) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(SEND_OTP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ошибка отправки");
       setStep("otp");
+      setOtp(["", "", "", "", "", ""]);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка отправки SMS");
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleVerify = () => {
-    if (otp.join("") === demoCode) setStep("name");
+  const handleResend = async () => {
+    setOtp(["", "", "", "", "", ""]);
+    setError("");
+    await handleSendCode();
+  };
+
+  const handleVerify = async () => {
+    const code = otp.join("");
+    if (code.length < 6) return;
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(VERIFY_OTP_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, code }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Неверный код");
+      setStep("name");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Неверный код");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleFinish = () => {
@@ -93,33 +133,36 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
                   className="w-full bg-secondary border border-border rounded-xl pl-11 pr-4 py-3.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all"
                 />
               </div>
+              {error && (
+                <p className="text-destructive text-sm mb-3 flex items-center gap-1.5">
+                  <Icon name="AlertCircle" size={14} /> {error}
+                </p>
+              )}
               <button
                 onClick={handleSendCode}
-                disabled={phone.length < 11}
-                className="w-full gradient-btn text-white font-semibold py-3.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+                disabled={phone.length < 11 || loading}
+                className="w-full gradient-btn text-white font-semibold py-3.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none flex items-center justify-center gap-2"
               >
-                Получить код
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Отправляем...
+                  </>
+                ) : "Получить код"}
               </button>
             </div>
           )}
 
           {step === "otp" && (
             <div className="animate-fade-in">
-              <button onClick={() => setStep("phone")} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors text-sm">
+              <button onClick={() => { setStep("phone"); setError(""); }} className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-4 transition-colors text-sm">
                 <Icon name="ArrowLeft" size={16} /> Назад
               </button>
               <h2 className="font-golos text-xl font-bold text-foreground mb-1">Код подтверждения</h2>
-              <p className="text-muted-foreground text-sm mb-4">
+              <p className="text-muted-foreground text-sm mb-6">
                 Отправили SMS на <span className="text-foreground font-medium">{formatPhone(phone)}</span>
               </p>
-              <div className="flex items-center gap-3 bg-primary/10 border border-primary/30 rounded-xl px-4 py-3 mb-6">
-                <Icon name="MessageSquare" size={18} className="text-primary flex-shrink-0" />
-                <div>
-                  <p className="text-xs text-muted-foreground">Тестовый код (SMS не подключены)</p>
-                  <p className="font-golos font-black text-2xl text-gradient tracking-widest">{demoCode}</p>
-                </div>
-              </div>
-              <div className="flex gap-2 mb-6">
+              <div className="flex gap-2 mb-4">
                 {otp.map((digit, i) => (
                   <input
                     key={i}
@@ -134,16 +177,28 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
                   />
                 ))}
               </div>
+              {error && (
+                <p className="text-destructive text-sm mb-3 flex items-center gap-1.5">
+                  <Icon name="AlertCircle" size={14} /> {error}
+                </p>
+              )}
               <button
                 onClick={handleVerify}
-                disabled={otp.join("").length < 6}
-                className="w-full gradient-btn text-white font-semibold py-3.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+                disabled={otp.join("").length < 6 || loading}
+                className="w-full gradient-btn text-white font-semibold py-3.5 rounded-xl disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none flex items-center justify-center gap-2 mb-3"
               >
-                Подтвердить
+                {loading ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+                    Проверяем...
+                  </>
+                ) : "Подтвердить"}
               </button>
-              <p className="text-center text-muted-foreground text-xs mt-4">
+              <p className="text-center text-muted-foreground text-xs">
                 Не получили код?{" "}
-                <button className="text-primary hover:underline">Отправить снова</button>
+                <button onClick={handleResend} disabled={loading} className="text-primary hover:underline disabled:opacity-50">
+                  Отправить снова
+                </button>
               </p>
             </div>
           )}
