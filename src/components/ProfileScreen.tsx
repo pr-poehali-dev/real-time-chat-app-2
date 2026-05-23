@@ -151,7 +151,7 @@ export default function ProfileScreen({ name, phone, onBack, onLogout }: Profile
           Выйти из аккаунта
         </button>
 
-        <p className="text-center text-xs text-muted-foreground pb-4">Pulse v1.0.0 · 🔐 Сквозное шифрование</p>
+        <p className="text-center text-xs text-muted-foreground pb-4">CasstecsZ v1.0.0 · 🔐 Сквозное шифрование</p>
       </div>
     </div>
   );

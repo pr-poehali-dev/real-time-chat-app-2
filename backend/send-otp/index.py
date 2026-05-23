@@ -61,7 +61,7 @@ def handler(event: dict, context) -> dict:
     params = urllib.parse.urlencode({
         'api_id': api_key,
         'to': digits,
-        'msg': f'Ваш код для входа в Pulse: {code}. Не сообщайте никому.',
+        'msg': f'Ваш код для входа в CasstecsZ: {code}. Не сообщайте никому.',
         'json': 1,
     })
 

@@ -110,7 +110,7 @@ export default function SearchScreen({ onBack, onStartChat }: SearchScreenProps)
           <div className="flex flex-col items-center justify-center py-16 text-center">
             <span className="text-5xl mb-3">📱</span>
             <p className="text-muted-foreground text-sm">Введи номер для поиска</p>
-            <p className="text-muted-foreground text-xs mt-1">Пользователь должен быть зарегистрирован в Pulse</p>
+            <p className="text-muted-foreground text-xs mt-1">Пользователь должен быть зарегистрирован в CasstecsZ</p>
           </div>
         )}
       </div>

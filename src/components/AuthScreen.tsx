@@ -112,7 +112,7 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl glass-strong mb-4 animate-pulse-ring">
             <span className="text-3xl">⚡</span>
           </div>
-          <h1 className="font-golos text-4xl font-black text-gradient mb-2">Pulse</h1>
+          <h1 className="font-golos text-4xl font-black text-gradient mb-2">CasstecsZ</h1>
           <p className="text-muted-foreground text-sm">Мессенджер нового поколения</p>
         </div>
 
