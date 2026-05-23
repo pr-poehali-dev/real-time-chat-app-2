@@ -30,10 +30,11 @@ def handler(event: dict, context) -> dict:
 
     # Нормализуем номер: только цифры
     digits = ''.join(c for c in phone if c.isdigit())
-    if digits.startswith('8'):
+    if len(digits) == 11 and digits.startswith('8'):
         digits = '7' + digits[1:]
-    if not digits.startswith('7'):
-        digits = '7' + digits.lstrip('7')
+    elif len(digits) == 10:
+        digits = '7' + digits
+    # digits должен быть 11 цифр начиная с 7
 
     code = str(random.randint(100000, 999999))
 
@@ -70,12 +71,29 @@ def handler(event: dict, context) -> dict:
 
     sms_status = resp.get('sms', {}).get(digits, {}).get('status', '')
 
+    SMS_ERRORS = {
+        200: 'SMS отправлено',
+        210: 'SMS в очереди',
+        220: 'Недостаточно средств на балансе SMS.ru',
+        221: 'Номер в стоп-листе или не добавлен в тестовые номера. Перейди в личный кабинет SMS.ru → Тестовые номера и добавь свой номер.',
+        222: 'Неверный номер телефона',
+        223: 'Сообщение слишком длинное',
+        230: 'Превышен лимит на день',
+        231: 'Превышен лимит в минуту',
+        232: 'Превышен лимит в секунду',
+    }
+
     if resp.get('status') != 'OK' or sms_status != 'OK':
-        error_code = resp.get('sms', {}).get(digits, {}).get('status_code', '')
+        raw_code = resp.get('sms', {}).get(digits, {}).get('status_code', '')
+        try:
+            code_int = int(raw_code)
+            friendly = SMS_ERRORS.get(code_int, f'Ошибка SMS.ru: {raw_code}')
+        except (ValueError, TypeError):
+            friendly = f'Ошибка отправки SMS: {raw_code}'
         return {
             'statusCode': 502,
             'headers': cors,
-            'body': json.dumps({'error': f'Ошибка отправки SMS: {error_code}'})
+            'body': json.dumps({'error': friendly})
         }
 
     return {
