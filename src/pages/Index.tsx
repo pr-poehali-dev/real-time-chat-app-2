@@ -1,44 +1,70 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import AuthScreen from "@/components/AuthScreen";
-import ChatList, { type Chat } from "@/components/ChatList";
+import ChatList from "@/components/ChatList";
 import ChatWindow from "@/components/ChatWindow";
 import ProfileScreen from "@/components/ProfileScreen";
 import SearchScreen from "@/components/SearchScreen";
+import { authUser, getChats, type User, type ChatItem } from "@/api";
 
 type Screen = "chat" | "profile" | "search";
 
-const DEMO_CHATS: Chat[] = [
-  { id: "1", name: "Алексей Иванов", lastMessage: "Кстати, здесь есть сквозное шифрование 🔐", time: "10:26", unread: 0, online: true, avatar: "А", pinned: true },
-  { id: "2", name: "Мария Петрова", lastMessage: "Окей, увидимся завтра!", time: "09:15", unread: 3, online: true, avatar: "М" },
-  { id: "3", name: "Рабочий чат", lastMessage: "Дмитрий: Отчёт готов, отправляю", time: "Вчера", unread: 12, online: false, avatar: "Р" },
-  { id: "4", name: "Сергей Новиков", lastMessage: "Спасибо, получил!", time: "Вчера", unread: 0, online: false, avatar: "С" },
-  { id: "5", name: "Анна Козлова", lastMessage: "Смотри что нашла 😍", time: "Пн", unread: 1, online: true, avatar: "А" },
-  { id: "6", name: "Команда Pulse", lastMessage: "Добро пожаловать в Pulse! ⚡", time: "Вс", unread: 0, online: false, avatar: "⚡", pinned: true },
-];
+interface ActiveChat {
+  chatId: number | null;
+  partnerId: number;
+  partnerName: string;
+  partnerAvatar: string;
+}
 
 export default function Index() {
-  const [user, setUser] = useState<{ name: string; phone: string } | null>(null);
-  const [activeChat, setActiveChat] = useState<string | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [chats, setChats] = useState<ChatItem[]>([]);
+  const [activeChat, setActiveChat] = useState<ActiveChat | null>(null);
   const [screen, setScreen] = useState<Screen>("chat");
   const [mobileView, setMobileView] = useState<"list" | "chat">("list");
 
-  const handleAuth = (name: string, phone: string) => {
-    setUser({ name, phone });
+  const loadChats = useCallback(async (userId: number) => {
+    const data = await getChats(userId);
+    setChats(data);
+  }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    loadChats(user.id);
+    const interval = setInterval(() => loadChats(user.id), 3000);
+    return () => clearInterval(interval);
+  }, [user, loadChats]);
+
+  const handleAuth = async (name: string, phone: string) => {
+    const u = await authUser(phone, name);
+    setUser(u);
   };
 
-  const handleSelectChat = (id: string) => {
-    setActiveChat(id);
+  const handleSelectChat = (chatItem: ChatItem) => {
+    setActiveChat({
+      chatId: chatItem.chat_id,
+      partnerId: chatItem.partner_id,
+      partnerName: chatItem.partner_name,
+      partnerAvatar: chatItem.partner_name.charAt(0).toUpperCase(),
+    });
     setScreen("chat");
     setMobileView("chat");
   };
 
-  const handleBack = () => {
-    setMobileView("list");
+  const handleStartChat = (partnerId: number, partnerName: string) => {
+    setActiveChat({
+      chatId: null,
+      partnerId,
+      partnerName,
+      partnerAvatar: partnerName.charAt(0).toUpperCase(),
+    });
+    setScreen("chat");
+    setMobileView("chat");
   };
 
   const handleLogout = () => {
     setUser(null);
     setActiveChat(null);
+    setChats([]);
     setScreen("chat");
     setMobileView("list");
   };
@@ -47,7 +73,22 @@ export default function Index() {
     return <AuthScreen onAuth={handleAuth} />;
   }
 
-  const selectedChat = DEMO_CHATS.find(c => c.id === activeChat) || null;
+  const isOnline = (lastSeen: string | null) => {
+    if (!lastSeen) return false;
+    return (Date.now() - new Date(lastSeen).getTime()) < 5 * 60 * 1000;
+  };
+
+  const chatListItems = chats.map(c => ({
+    id: String(c.chat_id),
+    name: c.partner_name,
+    lastMessage: c.last_message,
+    time: c.last_message_at
+      ? new Date(c.last_message_at).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" })
+      : "",
+    unread: c.unread_count,
+    online: isOnline(c.last_seen),
+    avatar: c.partner_name.charAt(0).toUpperCase(),
+  }));
 
   if (screen === "profile") {
     return (
@@ -67,11 +108,7 @@ export default function Index() {
       <div className="h-screen w-full">
         <SearchScreen
           onBack={() => setScreen("chat")}
-          onStartChat={(id) => {
-            setActiveChat(id);
-            setScreen("chat");
-            setMobileView("chat");
-          }}
+          onStartChat={(partnerId, partnerName) => handleStartChat(partnerId, partnerName)}
         />
       </div>
     );
@@ -79,30 +116,29 @@ export default function Index() {
 
   return (
     <div className="h-screen w-full flex overflow-hidden">
-      <div className={`
-        w-full md:w-80 lg:w-96 flex-shrink-0
-        ${mobileView === "chat" ? "hidden md:flex" : "flex"}
-        flex-col
-      `}>
+      <div className={`w-full md:w-80 lg:w-96 flex-shrink-0 ${mobileView === "chat" ? "hidden md:flex" : "flex"} flex-col`}>
         <ChatList
-          chats={DEMO_CHATS}
-          activeId={activeChat}
-          onSelect={handleSelectChat}
+          chats={chatListItems}
+          activeId={activeChat ? String(activeChat.chatId) : null}
+          onSelect={(id) => {
+            const found = chats.find(c => String(c.chat_id) === id);
+            if (found) handleSelectChat(found);
+          }}
           onSearch={() => setScreen("search")}
           onProfile={() => setScreen("profile")}
           userName={user.name}
         />
       </div>
 
-      <div className={`
-        flex-1 min-w-0
-        ${mobileView === "list" ? "hidden md:flex" : "flex"}
-        flex-col
-      `}>
+      <div className={`flex-1 min-w-0 ${mobileView === "list" ? "hidden md:flex" : "flex"} flex-col`}>
         <ChatWindow
-          chat={selectedChat}
-          onBack={handleBack}
-          currentUser={user.name}
+          chatId={activeChat?.chatId ?? null}
+          partnerId={activeChat?.partnerId ?? null}
+          partnerName={activeChat?.partnerName ?? ""}
+          partnerOnline={false}
+          partnerAvatar={activeChat?.partnerAvatar ?? ""}
+          userId={user.id}
+          onBack={() => setMobileView("list")}
         />
       </div>
     </div>

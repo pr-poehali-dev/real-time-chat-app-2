@@ -1,29 +1,16 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
-import type { Chat } from "./ChatList";
-
-interface Message {
-  id: string;
-  text: string;
-  time: string;
-  out: boolean;
-  status: "sent" | "delivered" | "read";
-}
+import { getMessages, sendMessage, type Message } from "@/api";
 
 interface ChatWindowProps {
-  chat: Chat | null;
+  chatId: number | null;
+  partnerId: number | null;
+  partnerName: string;
+  partnerOnline: boolean;
+  partnerAvatar: string;
+  userId: number;
   onBack: () => void;
-  currentUser: string;
 }
-
-const DEMO_MESSAGES: Message[] = [
-  { id: "1", text: "Привет! Как дела?", time: "10:21", out: false, status: "read" },
-  { id: "2", text: "Отлично, спасибо! Ты как?", time: "10:22", out: true, status: "read" },
-  { id: "3", text: "Тоже всё хорошо! Слушай, ты видел новый мессенджер Pulse?", time: "10:23", out: false, status: "read" },
-  { id: "4", text: "Да, только что зарегистрировался! Дизайн огонь 🔥", time: "10:24", out: true, status: "read" },
-  { id: "5", text: "Согласен, особенно эти неоновые цвета. Очень современно!", time: "10:25", out: false, status: "read" },
-  { id: "6", text: "Кстати, здесь есть сквозное шифрование — все сообщения под защитой 🔐", time: "10:26", out: true, status: "delivered" },
-];
 
 const AVATAR_COLORS = [
   "from-purple-500 to-pink-500",
@@ -31,69 +18,78 @@ const AVATAR_COLORS = [
   "from-green-400 to-teal-500",
 ];
 
-export default function ChatWindow({ chat, onBack, currentUser }: ChatWindowProps) {
-  const [messages, setMessages] = useState<Message[]>(DEMO_MESSAGES);
+export default function ChatWindow({ chatId, partnerId, partnerName, partnerOnline, partnerAvatar, userId, onBack }: ChatWindowProps) {
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [sending, setSending] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const lastIdRef = useRef(0);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const loadMessages = useCallback(async (afterId = 0) => {
+    if (!chatId || !userId) return;
+    const msgs = await getMessages(chatId, userId, afterId);
+    if (msgs.length > 0) {
+      setMessages(prev => {
+        const existingIds = new Set(prev.map(m => m.id));
+        const newMsgs = msgs.filter(m => !existingIds.has(m.id));
+        if (newMsgs.length === 0) return prev;
+        lastIdRef.current = msgs[msgs.length - 1].id;
+        return [...prev, ...newMsgs];
+      });
+    }
+  }, [chatId, userId]);
+
+  useEffect(() => {
+    if (!chatId) return;
+    setMessages([]);
+    lastIdRef.current = 0;
+
+    loadMessages(0);
+
+    pollingRef.current = setInterval(() => {
+      loadMessages(lastIdRef.current);
+    }, 2000);
+
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, [chatId, loadMessages]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  useEffect(() => {
-    if (chat) {
-      setMessages(DEMO_MESSAGES);
-      setIsTyping(false);
-    }
-  }, [chat?.id]);
-
-  const sendMessage = () => {
-    if (!input.trim()) return;
-    const msg: Message = {
-      id: Date.now().toString(),
-      text: input.trim(),
-      time: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }),
-      out: true,
-      status: "sent",
-    };
-    setMessages(prev => [...prev, msg]);
+  const handleSend = async () => {
+    if (!input.trim() || sending || !userId) return;
+    const text = input.trim();
     setInput("");
-
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      const reply: Message = {
-        id: (Date.now() + 1).toString(),
-        text: getAutoReply(msg.text),
-        time: new Date().toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" }),
-        out: false,
-        status: "read",
-      };
-      setMessages(prev => [...prev, reply]);
-    }, 1500 + Math.random() * 1000);
-  };
-
-  const getAutoReply = (text: string) => {
-    const replies = [
-      "Понял, спасибо за сообщение! 👍",
-      "Интересно, расскажи подробнее",
-      "Хорошо, договорились!",
-      "Окей, буду иметь в виду 😊",
-      "Отличная идея!",
-    ];
-    return replies[Math.floor(Math.random() * replies.length)];
+    setSending(true);
+    try {
+      const msg = await sendMessage(userId, text, chatId ?? undefined, partnerId ?? undefined);
+      setMessages(prev => {
+        const exists = prev.some(m => m.id === msg.id);
+        if (exists) return prev;
+        lastIdRef.current = msg.id;
+        return [...prev, { ...msg, sender_name: "" }];
+      });
+    } finally {
+      setSending(false);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      handleSend();
     }
   };
 
-  if (!chat) {
+  const formatMsgTime = (iso: string) => {
+    return new Date(iso).toLocaleTimeString("ru", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  if (!chatId && !partnerId) {
     return (
       <div className="h-full flex flex-col items-center justify-center bg-background bg-mesh">
         <div className="text-center animate-fade-in">
@@ -108,39 +104,18 @@ export default function ChatWindow({ chat, onBack, currentUser }: ChatWindowProp
   return (
     <div className="h-full flex flex-col bg-background">
       <div className="flex items-center gap-3 p-4 border-b border-border glass">
-        <button
-          onClick={onBack}
-          className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors text-muted-foreground"
-        >
+        <button onClick={onBack} className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors text-muted-foreground">
           <Icon name="ArrowLeft" size={20} />
         </button>
-
-        <div className="relative flex-shrink-0">
-          <div className={`w-10 h-10 rounded-full bg-gradient-to-br ${AVATAR_COLORS[0]} flex items-center justify-center font-golos font-bold text-white ${chat.online ? "online-dot" : ""}`}>
-            {chat.avatar}
-          </div>
+        <div className={`relative flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br ${AVATAR_COLORS[0]} flex items-center justify-center font-golos font-bold text-white ${partnerOnline ? "online-dot" : ""}`}>
+          {partnerAvatar}
         </div>
-
         <div className="flex-1 min-w-0">
-          <h3 className="font-semibold text-foreground">{chat.name}</h3>
-          <p className={`text-xs ${chat.online ? "text-green-400" : "text-muted-foreground"}`}>
-            {isTyping ? (
-              <span className="flex items-center gap-1">
-                <span>печатает</span>
-                <span className="flex gap-0.5">
-                  {[0, 1, 2].map(i => (
-                    <span
-                      key={i}
-                      className="w-1 h-1 rounded-full bg-green-400 animate-bounce"
-                      style={{ animationDelay: `${i * 0.15}s` }}
-                    />
-                  ))}
-                </span>
-              </span>
-            ) : chat.online ? "в сети" : "был(а) недавно"}
+          <h3 className="font-semibold text-foreground">{partnerName}</h3>
+          <p className={`text-xs ${partnerOnline ? "text-green-400" : "text-muted-foreground"}`}>
+            {partnerOnline ? "в сети" : "был(а) недавно"}
           </p>
         </div>
-
         <div className="flex items-center gap-1">
           <button className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
             <Icon name="Phone" size={18} />
@@ -161,28 +136,39 @@ export default function ChatWindow({ chat, onBack, currentUser }: ChatWindowProp
           </span>
         </div>
 
-        {messages.map((msg, i) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.out ? "justify-end" : "justify-start"} animate-message-in`}
-            style={{ animationDelay: `${Math.min(i * 0.05, 0.3)}s` }}
-          >
-            <div className={`max-w-[75%] px-4 py-2.5 ${msg.out ? "msg-bubble-out text-white" : "msg-bubble-in text-foreground"}`}>
-              <p className="text-sm leading-relaxed">{msg.text}</p>
-              <div className={`flex items-center gap-1 mt-1 ${msg.out ? "justify-end" : "justify-start"}`}>
-                <span className={`text-[10px] ${msg.out ? "text-white/60" : "text-muted-foreground"}`}>{msg.time}</span>
-                {msg.out && (
-                  <Icon
-                    name={msg.status === "read" ? "CheckCheck" : "Check"}
-                    size={12}
-                    className={msg.status === "read" ? "text-cyan-300" : "text-white/60"}
-                  />
-                )}
+        {messages.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <span className="text-4xl mb-2">👋</span>
+            <p className="text-muted-foreground text-sm">Напиши первое сообщение!</p>
+          </div>
+        )}
+
+        {messages.map((msg, i) => {
+          const isOut = msg.sender_id === userId;
+          return (
+            <div
+              key={msg.id}
+              className={`flex ${isOut ? "justify-end" : "justify-start"} animate-message-in`}
+              style={{ animationDelay: `${Math.min(i * 0.03, 0.2)}s` }}
+            >
+              <div className={`max-w-[75%] px-4 py-2.5 ${isOut ? "msg-bubble-out text-white" : "msg-bubble-in text-foreground"}`}>
+                <p className="text-sm leading-relaxed">{msg.text}</p>
+                <div className={`flex items-center gap-1 mt-1 ${isOut ? "justify-end" : "justify-start"}`}>
+                  <span className={`text-[10px] ${isOut ? "text-white/60" : "text-muted-foreground"}`}>
+                    {formatMsgTime(msg.created_at)}
+                  </span>
+                  {isOut && (
+                    <Icon
+                      name={msg.is_read ? "CheckCheck" : "Check"}
+                      size={12}
+                      className={msg.is_read ? "text-cyan-300" : "text-white/60"}
+                    />
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
-
+          );
+        })}
         <div ref={bottomRef} />
       </div>
 
@@ -191,30 +177,29 @@ export default function ChatWindow({ chat, onBack, currentUser }: ChatWindowProp
           <button className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground mb-0.5">
             <Icon name="Paperclip" size={20} />
           </button>
-
           <div className="flex-1 relative">
             <textarea
-              ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Написать сообщение..."
               rows={1}
-              className="w-full bg-secondary border border-border rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all resize-none max-h-32 scrollbar-thin"
+              className="w-full bg-secondary border border-border rounded-2xl px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all resize-none max-h-32"
               style={{ minHeight: "46px" }}
             />
           </div>
-
           <button className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground mb-0.5">
             <Icon name="Smile" size={20} />
           </button>
-
           <button
-            onClick={sendMessage}
-            disabled={!input.trim()}
+            onClick={handleSend}
+            disabled={!input.trim() || sending}
             className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-xl gradient-btn text-white disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none mb-0.5"
           >
-            <Icon name="Send" size={18} />
+            {sending
+              ? <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />
+              : <Icon name="Send" size={18} />
+            }
           </button>
         </div>
       </div>

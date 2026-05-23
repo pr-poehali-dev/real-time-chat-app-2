@@ -1,4 +1,7 @@
 {
+  "send-message": "https://functions.poehali.dev/c2e8fa48-5f07-4d25-b8b8-f9cb31078008",
+  "auth-user": "https://functions.poehali.dev/db51c709-8817-4a92-ae7c-e0def33946ec",
+  "chat-api": "https://functions.poehali.dev/83b1b49d-6c39-4cba-8c3e-9645d6ee0d5b",
   "send-otp": "https://functions.poehali.dev/60881951-d949-4a5e-a695-9ba99f8b53c2",
   "verify-otp": "https://functions.poehali.dev/74957357-8911-41df-a409-e53035411937"
 }
