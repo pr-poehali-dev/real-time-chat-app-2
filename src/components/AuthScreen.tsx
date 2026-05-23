@@ -12,6 +12,7 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [name, setName] = useState("");
+  const [demoCode, setDemoCode] = useState("");
 
   const formatPhone = (val: string) => {
     const digits = val.replace(/\D/g, "");
@@ -44,12 +45,17 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
     }
   };
 
+  const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
   const handleSendCode = () => {
-    if (phone.length >= 11) setStep("otp");
+    if (phone.length >= 11) {
+      setDemoCode(generateCode());
+      setStep("otp");
+    }
   };
 
   const handleVerify = () => {
-    if (otp.join("").length === 6) setStep("name");
+    if (otp.join("") === demoCode) setStep("name");
   };
 
   const handleFinish = () => {
@@ -103,9 +109,16 @@ export default function AuthScreen({ onAuth }: AuthScreenProps) {
                 <Icon name="ArrowLeft" size={16} /> Назад
               </button>
               <h2 className="font-golos text-xl font-bold text-foreground mb-1">Код подтверждения</h2>
-              <p className="text-muted-foreground text-sm mb-6">
+              <p className="text-muted-foreground text-sm mb-4">
                 Отправили SMS на <span className="text-foreground font-medium">{formatPhone(phone)}</span>
               </p>
+              <div className="flex items-center gap-3 bg-primary/10 border border-primary/30 rounded-xl px-4 py-3 mb-6">
+                <Icon name="MessageSquare" size={18} className="text-primary flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-muted-foreground">Тестовый код (SMS не подключены)</p>
+                  <p className="font-golos font-black text-2xl text-gradient tracking-widest">{demoCode}</p>
+                </div>
+              </div>
               <div className="flex gap-2 mb-6">
                 {otp.map((digit, i) => (
                   <input
